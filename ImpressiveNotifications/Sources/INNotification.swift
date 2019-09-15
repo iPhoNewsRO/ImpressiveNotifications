@@ -8,12 +8,14 @@
 
 import UIKit
 
-class INNotification: UIView {
+public class INNotification: UIView {
     var data: INNotificationData
     let titleLabel: UILabel = UILabel()
     let descriptionLabel: UILabel = UILabel()
     let iconImageView: UIImageView = UIImageView()
     let titleDescriptionStackView: UIStackView = UIStackView()
+    var timer: Timer?
+    let position: INNotificationPosition
     
     var cornerRadius: CGFloat = 6.0
     var verticalMargin: CGFloat = 16.0
@@ -32,10 +34,11 @@ class INNotification: UIView {
         fatalError("Not implemented.")
     }
     
-    public init(with data: INNotificationData = INNotificationData(), type: INNotificationType, customStyle: INNotificationStyle? = nil) {
+    public init(with data: INNotificationData = INNotificationData(), type: INNotificationType, customStyle: INNotificationStyle? = nil, position: INNotificationPosition) {
         self.data = data
         self.type = type
         self.customStyle = customStyle
+        self.position = position
         
         super.init(frame: CGRect.zero)
         
@@ -122,6 +125,7 @@ class INNotification: UIView {
         
         switch type {
         case .custom(let view):
+            self.backgroundColor = .clear
             setupCustomView(view: view)
         case .danger, .success, .warning:
             setupNormalView()
@@ -187,7 +191,13 @@ class INNotification: UIView {
     }
     
     @objc internal func hideNotification() {
-        let translate = CGAffineTransform(translationX: 0, y: (-self.frame.height - 100))
+        let translate: CGAffineTransform
+        switch position {
+        case .top:
+            translate = CGAffineTransform(translationX: 0, y: (-self.frame.height - 100))
+        case .bottom:
+            translate = CGAffineTransform(translationX: 0, y: self.frame.height + 100)
+        }
         
         UIView.animate(withDuration: 0.3, animations: {
             self.transform = translate
@@ -196,15 +206,47 @@ class INNotification: UIView {
         })
     }
     
-    @objc internal func tappedNotification() {
+    @objc internal func finishNotification() {
         hideNotification()
+        data.parentDelegate?.impressiveNotificationFinished()
+    }
+    
+    @objc internal func tappedNotification() {
         data.completionHandler?()
+        data.parentDelegate?.impressiveNotificationTapped()
+        
+        guard data.hideOnTap else { 
+            return 
+        }
+        
+        hideNotification()
+        
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    public func hide() {
+        timer?.invalidate()
+        timer = nil
+        
+        finishNotification()
     }
     
     public func showNotification() {
-        Timer.scheduledTimer(timeInterval: Double(data.delay), target: self, selector: #selector(hideNotification), userInfo: nil, repeats: false)
+        if let delay = data.delay {
+            timer = Timer.scheduledTimer(timeInterval: Double(delay), target: self, selector: #selector(finishNotification), userInfo: nil, repeats: false)
+        }
+        
+        let newY: CGFloat
+        switch position {
+        case .top:
+            newY = self.safeAreaInsets.top + self.verticalMargin
+        case .bottom:
+            newY = self.safeAreaInsets.bottom - self.verticalMargin - self.frame.height
+        }
+        
         UIView.animate(withDuration: 0.3, delay: 0.0, usingSpringWithDamping: 0.68, initialSpringVelocity: 0.1, options: UIView.AnimationOptions(), animations: {
-            self.frame.origin.y = self.safeAreaInsets.top + self.verticalMargin
+            self.frame.origin.y = newY
         })
     }
 }
